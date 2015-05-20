@@ -1,0 +1,16 @@
+######################################
+## Example submit description file
+## for LAM MPI
+######################################
+universe = parallel
+executable = lamscript
+arguments = ./cpi
+machine_count = 4
+should_transfer_files = yes
+when_to_transfer_output = on_exit
+transfer_input_files = ./cpi
+output = cpi.out
+log = cpi.log 
+periodic_remove = ((RemoteWallClockTime - CumulativeSuspensionTime) > 7200)
+
+queue
