@@ -23,7 +23,6 @@ char *ID;
 
 /* Program Parameters */
 #define MAXN 10000  /* Max value of N */
-
 int N;  /* Matrix size */
 int procs;  /* Number of processors to use */
 int myid;
@@ -197,7 +196,7 @@ void gauss() {
     double startwtime = 0.0, endwtime;
 
     MPI_Barrier(MPI_COMM_WORLD);
-
+    
     if (myid == 0) {
         printf("\nComputing Parallely Using MPI.\n");
         startwtime = MPI_Wtime();
