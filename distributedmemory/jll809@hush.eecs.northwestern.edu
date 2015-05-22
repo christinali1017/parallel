@@ -187,80 +187,44 @@ int main(int argc, char **argv) {
 void gauss() {
     int norm, row, col;  /* Normalization row, and zeroing element row and col */
     float multiplier;
-    int bid,i,j; /*Broadcast processor id for each iteration*/
+    int bid; /*Broadcast processor id for each iteration*/
     /*Time Variables*/
     double startwtime = 0.0, endwtime;
-    float a[N][N];
-
     if (myid == 0) {
         printf("\nComputing Parallely Using MPI.\n");
-        for(i = 0; i < N; i++) {
-            for(j = 0; j < N; j++) {
-                a[i][j] = A[i][j];
-            }
-        }
         startwtime = MPI_Wtime();
         /*Broadcast A[][] and B[] to all the processors*/
        
     }
-    MPI_Bcast(&a[0][0], N*N, MPI_FLOAT, 0, MPI_COMM_WORLD);
-    MPI_Bcast(&B[0], N, MPI_FLOAT, 0, MPI_COMM_WORLD);
-    MPI_Barrier(MPI_COMM_WORLD);
-
+     MPI_Bcast(&A[0][0], N*N, MPI_FLOAT, 0, MPI_COMM_WORLD);
+     MPI_Bcast(&B[0], N, MPI_FLOAT, 0, MPI_COMM_WORLD);
     /* Gaussian elimination */
-    for (norm = 0; norm < N-1; norm++) {
-        // if(myid == 0) {
-        //     printf("\nProcess number %d", myid);
-        //     print_inputs();
-        // }
-
+    for (norm = 0; norm < N - 1; norm++) {
         /* Broadcast A[norm] row and B[norm] from corresponding processor, which is important in this iteration*/
         bid = norm%procs;
-        // if (myid == bid) {
-            MPI_Bcast(&a[norm][0], N, MPI_FLOAT, bid, MPI_COMM_WORLD);
-            MPI_Bcast(&B[norm], 1, MPI_FLOAT, bid, MPI_COMM_WORLD);
-        // }
-        // if(myid == 0) {
-        //     printf("\nProcess number %d", myid);
-        //     print_inputs();
-        // }
-
+        if (myid == bid) {
+            MPI_Bcast(&A[norm][0], N, MPI_FLOAT, myid, MPI_COMM_WORLD);
+            MPI_Bcast(&B[norm], 1, MPI_FLOAT, myid, MPI_COMM_WORLD);
+        }
         /*Barrier syncs all processes*/
         // MPI_Barrier(MPI_COMM_WORLD);
         /*Gaussian elimination using static interleaved scheduling where each processor gets the same rows in each iteration*/
         for (row = myid; row < N; row += procs) {
             /*Only perform gaussian elimination on rows that haven't been done*/
             if (row > norm) {
-                multiplier = a[row][norm] / a[norm][norm];
+                multiplier = A[row][norm] / A[norm][norm];
                 for (col = norm; col < N; col++) {
-                    a[row][col] -= a[norm][col] * multiplier;
+                    A[row][col] -= A[norm][col] * multiplier;
                 }
                 B[row] -= B[norm] * multiplier;
             }
         }
-        // if(myid == 0) {
-        //     printf("\nProcess number %d", myid);
-        //     print_inputs();
-        // }
-
         /*Barrier syncs all processes*/
         // MPI_Barrier(MPI_COMM_WORLD);
     }
-    MPI_Bcast(&a[N-1][0], N, MPI_FLOAT, (N-1)%procs, MPI_COMM_WORLD);
-    MPI_Bcast(&B[N-1], 1, MPI_FLOAT, (N-1)%procs, MPI_COMM_WORLD);
-    
-    MPI_Barrier(MPI_COMM_WORLD);
-    // printf("\nProcess number %d", myid);
-    // print_inputs();
     if (myid == 0) {
         endwtime = MPI_Wtime();
         printf("\nelapsed time = %f\n", endwtime - startwtime);
-        for(i = 0; i < N; i++) {
-            for(j = 0; j < N; j++) {
-                A[i][j] = a[i][j];
-            }
-        }
     }
-
 }
 

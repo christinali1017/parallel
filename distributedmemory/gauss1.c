@@ -1,205 +1,340 @@
-#include "mpi.h"
-#include <stdio.h>
-#include <math.h>
+/* Gaussian elimination without pivoting.
+ */
+
+/* ****** ADD YOUR CODE AT THE END OF THIS FILE. ******
+ * You need not submit the provided code.
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 #include <sys/types.h>
 #include <sys/times.h>
 #include <sys/time.h>
 #include <limits.h>
+#include "mpi.h"
 
+/*#include <ulocks.h>
+ #include <task.h>
+ */
 
 char *ID;
 
 /* Program Parameters */
 #define MAXN 10000  /* Max value of N */
-int N;  /* Matrix size */
 
+int N;  /* Matrix size */
 int procs;  /* Number of processors to use */
+int myid;
 
 /* Matrices and vectors */
-volatile float A[MAXN][MAXN], B[MAXN], X[MAXN];
+float  A[MAXN][MAXN], B[MAXN], X[MAXN];
 /* A * X = B, solve for X */
 
 /* junk */
 #define randm() 4|2[uid]&3
 
+/* Prototype */
+void gauss();  /* The function you will provide.
+                * It is this routine that is timed.
+                * It is called only on the parent.
+                */
+
 /* returns a seed for srand based on the time */
 unsigned int time_seed() {
-  struct timeval t;
-  struct timezone tzdummy;
-
-  gettimeofday(&t, &tzdummy);
-  return (unsigned int)(t.tv_usec);
+    struct timeval t;
+    struct timezone tzdummy;
+    
+    gettimeofday(&t, &tzdummy);
+    return (unsigned int)(t.tv_usec);
 }
 
-
-void initialize_inputs() {
-  int row, col;
-
-  printf("\nInitializing...\n");
-  for (col = 0; col < N; col++) {
-    for (row = 0; row < N; row++) {
-      A[row][col] = (float)rand() / 32768.0;
-    }
-    B[col] = (float)rand() / 32768.0;
-    X[col] = 0.0;
-  }
-
-}
-
-/* Set the program parameters from the command-line arguments */
 void parameters(int argc, char **argv) {
-  int submit = 0;  /* = 1 if submission parameters should be used */
-  int seed = 0;  /* Random seed */
-  char uid[32]; /*User name */
-
-  /* Read command-line arguments */
-  //  if (argc != 3) {
-  if ( argc == 1 && !strcmp(argv[1], "submit") ) {
-    /* Use submission parameters */
-    submit = 1;
-    N = 4;
-    procs = 2;
-    printf("\nSubmission run for \"%s\".\n", cuserid(uid));
-      /*uid = ID;*/
-    strcpy(uid,ID);
-    srand(randm());
-  }
-  else {
-    if (argc == 3) {
-      seed = atoi(argv[3]);
-      srand(seed);
-      printf("Random seed = %i\n", seed);
+    int submit = 0;  /* = 1 if submission parameters should be used */
+    int seed = 0;  /* Random seed */
+    // char uid[L_cuserid + 2]; /*User name */
+    char uid[32];
+    /* Read command-line arguments */
+    //  if (argc != 3) {
+    if ( argc == 1 && !strcmp(argv[1], "submit") ) {
+        /* Use submission parameters */
+        submit = 1;
+        N = 4;
+        procs = 2;
+        //printf("\nSubmission run for \"%s\".\n", cuserid(uid));
+        printf("\nSubmission run for \"%s\".\n", uid);
+        /*uid = ID;*/
+        strcpy(uid,ID);
+        srand(randm());
     }
     else {
-      printf("Usage: %s <matrix_dimension> <num_procs> [random seed]\n",
-       argv[0]);
-      printf("       %s submit\n", argv[0]);
-      exit(0);
+        if (argc == 2) {
+            seed = atoi(argv[1]);
+            srand(seed);
+            if (myid == 0) printf("\nRandom seed = %i\n", seed);
+        }
+        else {
+            if (myid == 0) printf("Usage: %s <matrix_dimension> <num_procs> [random seed]\n",
+                                  argv[0]);
+            printf("       %s submit\n", argv[0]);
+            exit(0);
+        }
     }
-  }
     //  }
-  /* Interpret command-line args */
-  if (!submit) {
-    N = atoi(argv[1]);
-    if (N < 1 || N > MAXN) {
-      printf("N = %i is out of range.\n", N);
-      exit(0);
+    /* Interpret command-line args */
+    if (!submit) {
+        N = atoi(argv[1]);
+        if (N < 1 || N > MAXN) {
+            printf("N = %i is out of range.\n", N);
+            exit(0);
+        }
     }
-    procs = atoi(argv[2]);
-    if (procs < 1) {
-      printf("Warning: Invalid number of processors = %i.  Using 1.\n", procs);
-      procs = 1;
-    }
-  }
+    
+    /* Print parameters */
+    if (myid == 0) printf("\nMatrix dimension N = %i.\n", N);
+    if (myid == 0) printf("Number of processors = %i.\n", procs);
+}
 
-  /* Print parameters */
-  printf("\nMatrix dimension N = %i.\n", N);
-  printf("Number of processors = %i.\n", procs);
+/* Initialize A and B (and X to 0.0s) */
+void initialize_inputs() {
+    int row, col;
+    
+    printf("\nInitializing...\n");
+    for (col = 0; col < N; col++) {
+        for (row = 0; row < N; row++) {
+            A[row][col] = (float)rand() / 32768.0;
+        }
+        B[col] = (float)rand() / 32768.0;
+        X[col] = 0.0;
+    }
+    
 }
 
 /* Print input matrices */
 void print_inputs() {
-  int row, col;
-
-  if (N < 10) {
-    printf("\nA =\n\t");
-    for (row = 0; row < N; row++) {
-      for (col = 0; col < N; col++) {
-  printf("%5.2f%s", A[row][col], (col < N-1) ? ", " : ";\n\t");
-      }
+    int row, col;
+    
+    if (N < 10) {
+        printf("\nA =\n\t");
+        for (row = 0; row < N; row++) {
+            for (col = 0; col < N; col++) {
+                printf("%5.2f%s", A[row][col], (col < N-1) ? ", " : ";\n\t");
+            }
+        }
+        printf("\nB = [");
+        for (col = 0; col < N; col++) {
+            printf("%5.2f%s", B[col], (col < N-1) ? "; " : "]\n");
+        }
     }
-    printf("\nB = [");
-    for (col = 0; col < N; col++) {
-      printf("%5.2f%s", B[col], (col < N-1) ? "; " : "]\n");
-    }
-  }
 }
 
 void print_X() {
-  int row;
-
-  if (N < 10) {
-    printf("\nX = [");
-    for (row = 0; row < N; row++) {
-      fprintf(stdout, "%5.2f%s", X[row], (row < N-1) ? "; " : "]\n");
+    int row;
+    
+    if (N < 10) {
+        printf("\nX = [");
+        for (row = 0; row < N; row++) {
+            printf("%5.2f%s", X[row], (row < N-1) ? "; " : "]\n");
+        }
     }
-  }
 }
 
+int main(int argc, char **argv) {
+    ID = argv[argc-1];
+    argc--;
+    
+    MPI_Init(&argc, &argv);
+    MPI_Comm_rank(MPI_COMM_WORLD, &myid);
+    MPI_Comm_size(MPI_COMM_WORLD, &procs);
+    printf("\nProcess number %d", myid);
+    /* Process program parameters */
+    parameters(argc, argv);
 
-int main( int argc, char *argv[])
-
-
-{
-
-   int n = 0;
-   int norm, row, col;
-   float multiplier;
-   int done = 0, numprocs;
-
-   parameters(argc, argv);
-
-  /* Initialize A and B */
-   initialize_inputs();
-
-  /* Print input matrices */
-   print_inputs();
-
-   char processor_name[MPI_MAX_PROCESSOR_NAME];
-
-   MPI_Init(&argc,&argv);
-   MPI_Comm_size(MPI_COMM_WORLD,&numprocs);
-   MPI_Comm_rank(MPI_COMM_WORLD,&myid);
-   MPI_Get_processor_name(processor_name,&namelen);
-
-   fprintf(stdout,"Process %d on %s.\n",myid, processor_name);
-   if( myid == 0 ) fprintf(stdout,"Using %d intervals\n",n_intervals);
-
-   while (!done)
-   {
-      if (myid == 0) {
-         startwtime = MPI_Wtime(); 
-      }
-      if( n == 0  ) n = N; else n = 0;
-      MPI_Bcast(&n, 1, MPI_INT, 0, MPI_COMM_WORLD);
-      if (n == 0)
-         done = 1;
-      else
-      {
-         for (norm = myid + 1; norm < n-1; norm += numprocs)
-         {
-            for (row = norm + 1; row < N; row++) {
-               multiplier = A[row][norm] / A[norm][norm];
-               for (col = norm; col < N; col++) {
-                  A[row][col] -= A[norm][col] * multiplier;
-               }
-               B[row] -= B[norm] * multiplier;
-             }
-         }
-
-         // MPI_Reduce(&mypi, &pi, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
-
-         if (myid == 0)
-         {
-            printf("pi is approximately %.16f, Error is %.16f\n",
-                   pi, fabs(pi - PI25DT));
-            for (row = N - 1; row >= 0; row--) {
-              X[row] = B[row];
-              for (col = N-1; col > row; col--) {
-                 X[row] -= A[row][col] * X[col];
-              }
-             X[row] /= A[row][row];
+    
+    /* Initialize A and B */
+    if (myid == 0) {
+        initialize_inputs();
+        
+        /* Print input matrices */
+        print_inputs();
+    }
+    /* Gaussian Elimination */
+    gauss();
+    /* Back substitution */
+    if (myid == 0) {
+        int row, col;
+        for (row = N - 1; row >= 0; row--) {
+            X[row] = B[row];
+            for (col = N-1; col > row; col--) {
+                X[row] -= A[row][col] * X[col];
             }
-            endwtime = MPI_Wtime();      
-         } 
-      }
-   }
-   MPI_Finalize();
+            X[row] /= A[row][row];
+        }
+        /* Display output */
+        print_X();
+    }
+    MPI_Finalize();
+    return 0;
+}
 
-   return 0;
+/* ------------------ Above Was Provided --------------------- */
 
+/****** You will replace this routine with your own parallel version *******/
+/* Provided global variables are MAXN, N, procs, A[][], B[], and X[],
+ * defined in the beginning of this code.  X[] is initialized to zeros.
+ */
+void gauss() {
+    MPI_Status status;
+    MPI_Request request;
+    int norm, row, col, i;  /* Normalization row, and zeroing element row and col */
+    float multiplier;
+    float localA[N/procs+1][N];
+    float localB[N/procs+1];
+    int numsRows = 0;
+    int k;
+    /*Time Variables*/
+    double startwtime = 0.0, endwtime;
+
+    MPI_Barrier(MPI_COMM_WORLD);
+
+    if (myid == 0) {
+        printf("\nComputing Parallely Using MPI.\n");
+        startwtime = MPI_Wtime();
+    }
+    /* Gaussian elimination */
+    for (norm = 0; norm < N - 1; norm++) {
+        /* Broadcast A[norm] row and B[norm]*/
+        MPI_Bcast(&A[norm][0], N, MPI_FLOAT, 0, MPI_COMM_WORLD);
+        MPI_Bcast(&B[norm], 1, MPI_FLOAT, 0, MPI_COMM_WORLD);
+        /*Send data from process 0 to other processes*/
+        if (myid == 0) {
+            for (i = 1; i < procs; i++) {
+                numsRows = 0;
+                /*Send data to corresponding process using static interleaved scheduling*/
+                for (row = norm + 1 + i; row < N; row += procs) {
+                    for(k = 0; k < N; k++){
+                      localA[numsRows][k] = A[row][k];
+                    }
+                    localB[numsRows] = B[row];
+                    numsRows++;
+                }
+                if (numsRows != 0) {
+                  MPI_Isend(&numsRows, 1, MPI_INT, i, 0, MPI_COMM_WORLD, &request);
+                  MPI_Isend(&localA[0], N*numsRows, MPI_FLOAT, i, 0, MPI_COMM_WORLD, &request);
+                  MPI_Isend(&localB[0], numsRows, MPI_FLOAT, i, 0, MPI_COMM_WORLD, &request);
+                }
+            }
+            // int j = norm + 1;
+            // while(j < N) {
+            //     for (i = 0; i < procs && j < N; i++) {
+            //         if (i == 0) {
+            //           j++;
+            //           continue;
+            //         }
+            //         MPI_Isend(&A[j], N, MPI_FLOAT, i, 0, MPI_COMM_WORLD, &request);
+            //         MPI_Wait(&request, &status);
+            //         MPI_Isend(&B[j], 1, MPI_FLOAT, i, 0, MPI_COMM_WORLD, &request);
+            //         MPI_Wait(&request, &status);
+            //         j++;
+            //     }
+            // }
+
+
+            /*Gaussian elimination*/
+            for (row = norm + 1; row < N; row += procs) {
+                multiplier = A[row][norm] / A[norm][norm];
+                for (col = norm; col < N; col++) {
+                    A[row][col] -= A[norm][col] * multiplier;
+                }
+                B[row] -= B[norm] * multiplier;
+            }
+            /*Receive the updated data from other processes*/
+
+
+            // for (i = 1; i < procs; i++) {
+            //     for (row = norm + 1 + i; row < N; row += procs) {
+            //         MPI_Recv(&A[row], N, MPI_FLOAT, i, 1, MPI_COMM_WORLD, &status);
+            //         MPI_Recv(&B[row], 1, MPI_FLOAT, i, 1, MPI_COMM_WORLD, &status);
+            //     }
+            // }
+
+            for (i = 1; i < procs; i++) {
+                MPI_Recv(&numsRows, 1, MPI_INT, i, 1, MPI_COMM_WORLD, &status);  
+                MPI_Recv(&localA[0], N*numsRows, MPI_FLOAT, i, 1, MPI_COMM_WORLD, &status);
+                MPI_Recv(&localB[0], numsRows, MPI_FLOAT, i, 1, MPI_COMM_WORLD, &status);
+                int count = 0;
+               for (row = norm + 1 + i; row < N; row += procs) {
+                  for(k = 0; k < N; k++) {
+                    A[row][k] = localA[count][k];
+                  }
+                  B[row] = localB[count];
+                  count++;
+               }
+            }
+
+
+            // j = norm + 1;
+            // while(j < N) {
+            //     for (i = 0; i < procs && j < N; i++) {
+            //         if (i == 0) {
+            //           j++;
+            //           continue;
+            //         }
+            //         MPI_Recv(&A[j], N, MPI_FLOAT, i, 1, MPI_COMM_WORLD, &status);
+            //         MPI_Recv(&B[j], 1, MPI_FLOAT, i, 1, MPI_COMM_WORLD, &status);
+            //         j++;
+            //     }
+            // }
+
+
+            if (norm == N - 2) {
+                endwtime = MPI_Wtime();
+                printf("elapsed time = %f\n", endwtime - startwtime);
+            }
+        }
+      
+        /*Receive data from process 0*/
+        else {
+                MPI_Recv(&numsRows, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);   
+                MPI_Recv(&localA[0], N * numsRows, MPI_FLOAT, 0, 0, MPI_COMM_WORLD, &status);   
+                MPI_Recv(&localB[0], numsRows, MPI_FLOAT, 0, 0, MPI_COMM_WORLD, &status);
+                /*Gaussian elimination*/
+                for(k = 0; k < numsRows; k++) {
+                    multiplier = localA[k][norm] / A[norm][norm];
+
+                    for (col = norm; col < N; col++) {
+                        localA[k][col] -= A[norm][col] * multiplier;
+                    }
+                    localB[k] -= B[norm] * multiplier;
+                }
+
+                /*Send back the results*/
+                MPI_Isend(&numsRows, 1, MPI_INT, 0, 1, MPI_COMM_WORLD, &request);
+                MPI_Isend(&localA[0], N*numsRows, MPI_FLOAT, 0, 1, MPI_COMM_WORLD, &request); 
+                // MPI_Wait(&request, &status);  
+                MPI_Isend(&localB[0], numsRows, MPI_FLOAT, 0, 1, MPI_COMM_WORLD, &request);
+                // MPI_Wait(&request, &status);
+            
+
+            // for (row = norm + 1 + myid; row < N; row += procs) {
+            //     MPI_Recv(&A[row], N, MPI_FLOAT, 0, 0, MPI_COMM_WORLD, &status);   
+            //     MPI_Recv(&B[row], 1, MPI_FLOAT, 0, 0, MPI_COMM_WORLD, &status);
+            //     /*Gaussian elimination*/
+            //     multiplier = A[row][norm] / A[norm][norm];
+            //     for (col = norm; col < N; col++) {
+            //         A[row][col] -= A[norm][col] * multiplier;
+            //     }
+            //     B[row] -= B[norm] * multiplier;
+            //     /*Send back the results*/
+            //     MPI_Isend(&A[row], N, MPI_FLOAT, 0, 1, MPI_COMM_WORLD, &request); 
+            //     MPI_Wait(&request, &status);  
+            //     MPI_Isend(&B[row], 1, MPI_FLOAT, 0, 1, MPI_COMM_WORLD, &request);
+            //     MPI_Wait(&request, &status);
+            // }
+        }
+        /*Barrier syncs all processes*/
+        MPI_Barrier(MPI_COMM_WORLD);
+    }
 }
 
