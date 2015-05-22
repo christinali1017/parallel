@@ -1,8 +1,22 @@
-/* Gaussian elimination without pivoting.
- */
+/* Algorithms:
+ 1) Processor 0 initialize A, B, X
+ 2) At begining, processor 0 broadcast A, B, X to all other procossors.
+ 3) Perform interleaving scheduling, each procossor broadcast corresponding rows to other processors, we use rowNum%procs
+ 4) After all row finishes elimination, we perform back substitution. 
 
-/* ****** ADD YOUR CODE AT THE END OF THIS FILE. ******
- * You need not submit the provided code.
+ Notes: 
+
+ 1) At beginning, we use processor 0 to send and gather result. Speed is really slow. After changing to interleaving 
+broadcast, time reduce from several minutes to several seconds.
+
+ 2) If we use static array, when N is large, there might be problems due to limited resources. When change array
+ to dynamic array, problem solved. 
+
+
+ Team members:
+ Juan Li jll809
+ Yuqing Chen yco664
+
  */
 
 #include <stdio.h>
@@ -29,7 +43,7 @@ int procs;  /* Number of processors to use */
 int myid;
 
 /* Matrices and vectors */
-float  A[MAXN][MAXN], B[MAXN], X[MAXN];
+float  *A, *B, *X;
 /* A * X = B, solve for X */
 
 /* junk */
@@ -40,7 +54,6 @@ void gauss();  /* The function you will provide.
                 * It is this routine that is timed.
                 * It is called only on the parent.
                 */
-float ** init_data(int dim_x, int dim_y);
 /* returns a seed for srand based on the time */
 unsigned int time_seed() {
     struct timeval t;
@@ -101,14 +114,13 @@ void initialize_inputs() {
     int row, col;
     
     printf("\nInitializing...\n");
-    for (col = 0; col < N; col++) {
-        for (row = 0; row < N; row++) {
-            A[row][col] = (float)rand() / 32768.0;
+    for (row = 0; row < N; row++) {
+        for (col = 0; col < N; col++) {
+            A[col + row*N] = (float)rand() / 32768.0;
         }
-        B[col] = (float)rand() / 32768.0;
-        X[col] = 0.0;
+        B[row] = (float)rand() / 32768.0;
+        X[row] = 0.0;
     }
-    printf("\nFinish Initializing...\n");
     
 }
 
@@ -120,7 +132,7 @@ void print_inputs() {
         printf("\nA =\n\t");
         for (row = 0; row < N; row++) {
             for (col = 0; col < N; col++) {
-                printf("%5.2f%s", A[row][col], (col < N-1) ? ", " : ";\n\t");
+                printf("%5.2f%s", A[row*N + col], (col < N-1) ? ", " : ";\n\t");
             }
         }
         printf("\nB = [");
@@ -151,8 +163,11 @@ int main(int argc, char **argv) {
     printf("\nProcess number %d", myid);
     /* Process program parameters */
     parameters(argc, argv);
-    printf("\nnumber  %d N is %d", myid, N);
     
+    //alocate memory
+    A = (float*)malloc(N*N*sizeof(float));
+    B = (float*)malloc(N*sizeof(float));
+    X = (float*)malloc(N*sizeof(float));
     
     /* Initialize A and B */
     if (myid == 0) {
@@ -169,123 +184,72 @@ int main(int argc, char **argv) {
         for (row = N - 1; row >= 0; row--) {
             X[row] = B[row];
             for (col = N-1; col > row; col--) {
-                X[row] -= A[row][col] * X[col];
+                X[row] -= A[row*N + col] * X[col];
             }
-            X[row] /= A[row][row];
+            X[row] /= A[row * N + row];
         }
         /* Display output */
         print_X();
     }
+    free(A);
+    free(B);
+    free(X);
     MPI_Finalize();
     return 0;
 }
 
-// float ** init_data(int dim_x, int dim_y) 
-// {
-//     int i,j,k;
-
-//     float **data = (float **) malloc(sizeof(float) * dim_x);
-//     for (k = 0; k < dim_y; k++) {
-//         data[k] = (float *) malloc(sizeof(float) * dim_y);
-//     }
-
-//     for (i = 0; i < dim_x; i++) {
-//         for (j = 0; j < dim_y; j++) {
-//             data[i][j] = ((float)rand()/(float)RAND_MAX);
-//         }
-//     }
-
-//     return data;
-// }
-
-/* ------------------ Above Was Provided --------------------- */
-
-/****** You will replace this routine with your own parallel version *******/
-/* Provided global variables are MAXN, N, procs, A[][], B[], and X[],
- * defined in the beginning of this code.  X[] is initialized to zeros.
- */
 void gauss() {
-    printf("\nBegin gauss...\n");
+    // printf("\nBegin gauss...\n");
     int norm, row, col;  /* Normalization row, and zeroing element row and col */
     float multiplier;
     int bid,i,j; /*Broadcast processor id for each iteration*/
     /*Time Variables*/
     double startwtime = 0.0, endwtime;
-    printf("\nbefore nn, Process number %d", myid);
-    float a[N][N]
-     printf("\nafter nn, Process number %d", myid);
+
 
     if (myid == 0) {
         printf("\nComputing Parallely Using MPI.\n");
-        for(i = 0; i < N; i++) {
-            for(j = 0; j < N; j++) {
-                a[i][j] = A[i][j];
-            }
-        }
         startwtime = MPI_Wtime();
-        /*Broadcast A[][] and B[] to all the processors*/
+       
        
     }
-    printf("\nBefore barrier...\n");
-    MPI_Barrier(MPI_COMM_WORLD);
-    printf("\n After barrier\n");
-    MPI_Bcast(&a[0][0], N*N, MPI_FLOAT, 0, MPI_COMM_WORLD);
+
+     /*Broadcast A[][] and B[] to all the processors*/
+    MPI_Bcast(&A[0], N*N, MPI_FLOAT, 0, MPI_COMM_WORLD);
     MPI_Bcast(&B[0], N, MPI_FLOAT, 0, MPI_COMM_WORLD);
     MPI_Barrier(MPI_COMM_WORLD);
 
     /* Gaussian elimination */
     for (norm = 0; norm < N-1; norm++) {
-        // if(myid == 0) {
-        //     printf("\nProcess number %d", myid);
-        //     print_inputs();
-        // }
-
         /* Broadcast A[norm] row and B[norm] from corresponding processor, which is important in this iteration*/
         bid = norm%procs;
-        // if (myid == bid) {
-            MPI_Bcast(&a[norm][0], N, MPI_FLOAT, bid, MPI_COMM_WORLD);
-            MPI_Bcast(&B[norm], 1, MPI_FLOAT, bid, MPI_COMM_WORLD);
-        // }
-        // if(myid == 0) {
-        //     printf("\nProcess number %d", myid);
-        //     print_inputs();
-        // }
+        MPI_Bcast(&A[norm*N], N, MPI_FLOAT, bid, MPI_COMM_WORLD);
+        MPI_Bcast(&B[norm], 1, MPI_FLOAT, bid, MPI_COMM_WORLD);
 
-        /*Barrier syncs all processes*/
-        // MPI_Barrier(MPI_COMM_WORLD);
+
         /*Gaussian elimination using static interleaved scheduling where each processor gets the same rows in each iteration*/
         for (row = myid; row < N; row += procs) {
             /*Only perform gaussian elimination on rows that haven't been done*/
             if (row > norm) {
-                multiplier = a[row][norm] / a[norm][norm];
+                multiplier = A[row*N + norm] / A[norm *N +norm];
                 for (col = norm; col < N; col++) {
-                    a[row][col] -= a[norm][col] * multiplier;
+                    A[row *N + col] -= A[norm*N + col] * multiplier;
                 }
                 B[row] -= B[norm] * multiplier;
             }
         }
-        // if(myid == 0) {
-        //     printf("\nProcess number %d", myid);
-        //     print_inputs();
-        // }
 
-        /*Barrier syncs all processes*/
-        // MPI_Barrier(MPI_COMM_WORLD);
     }
-    MPI_Bcast(&a[N-1][0], N, MPI_FLOAT, (N-1)%procs, MPI_COMM_WORLD);
+    MPI_Bcast(&A[(N-1)*N], N, MPI_FLOAT, (N-1)%procs, MPI_COMM_WORLD);
     MPI_Bcast(&B[N-1], 1, MPI_FLOAT, (N-1)%procs, MPI_COMM_WORLD);
     
     MPI_Barrier(MPI_COMM_WORLD);
-    // printf("\nProcess number %d", myid);
-    // print_inputs();
+
+    
     if (myid == 0) {
         endwtime = MPI_Wtime();
         printf("\nelapsed time = %f\n", endwtime - startwtime);
-        for(i = 0; i < N; i++) {
-            for(j = 0; j < N; j++) {
-                A[i][j] = a[i][j];
-            }
-        }
+
     }
 
 }

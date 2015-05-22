@@ -2,7 +2,8 @@
  */
 
 /* ****** ADD YOUR CODE AT THE END OF THIS FILE. ******
- * You need not submit the provided code.
+ * interleaving broadcast, time is good. But the stack size should be large when matrix size is really large. Otherwise, 
+   the job might be killed due to the limit of resources. 
  */
 
 #include <stdio.h>
@@ -22,7 +23,8 @@
 char *ID;
 
 /* Program Parameters */
-#define MAXN 10000  /* Max value of N */
+#define MAXN 5002  /* Max value of N */
+
 int N;  /* Matrix size */
 int procs;  /* Number of processors to use */
 int myid;
@@ -39,7 +41,7 @@ void gauss();  /* The function you will provide.
                 * It is this routine that is timed.
                 * It is called only on the parent.
                 */
-
+float ** init_data(int dim_x, int dim_y);
 /* returns a seed for srand based on the time */
 unsigned int time_seed() {
     struct timeval t;
@@ -49,7 +51,6 @@ unsigned int time_seed() {
     return (unsigned int)(t.tv_usec);
 }
 
-/* Set the program parameters from the command-line arguments */
 void parameters(int argc, char **argv) {
     int submit = 0;  /* = 1 if submission parameters should be used */
     int seed = 0;  /* Random seed */
@@ -108,6 +109,7 @@ void initialize_inputs() {
         B[col] = (float)rand() / 32768.0;
         X[col] = 0.0;
     }
+    printf("\nFinish Initializing...\n");
     
 }
 
@@ -150,6 +152,8 @@ int main(int argc, char **argv) {
     printf("\nProcess number %d", myid);
     /* Process program parameters */
     parameters(argc, argv);
+    printf("\nnumber  %d N is %d", myid, N);
+    
     
     /* Initialize A and B */
     if (myid == 0) {
@@ -184,74 +188,70 @@ int main(int argc, char **argv) {
  * defined in the beginning of this code.  X[] is initialized to zeros.
  */
 void gauss() {
-    MPI_Status status;
-    MPI_Request request;
-    int norm, row, col, i;  /* Normalization row, and zeroing element row and col */
+    printf("\nBegin gauss...\n");
+    int norm, row, col;  /* Normalization row, and zeroing element row and col */
     float multiplier;
+    int bid,i,j; /*Broadcast processor id for each iteration*/
     /*Time Variables*/
-
     double startwtime = 0.0, endwtime;
-    MPI_Barrier(MPI_COMM_WORLD);
+    printf("\nbefore nn, Process number %d", myid);
+    float a[N][N]
+     printf("\nafter nn, Process number %d", myid);
+
     if (myid == 0) {
         printf("\nComputing Parallely Using MPI.\n");
+        for(i = 0; i < N; i++) {
+            for(j = 0; j < N; j++) {
+                a[i][j] = A[i][j];
+            }
+        }
         startwtime = MPI_Wtime();
+        /*Broadcast A[][] and B[] to all the processors*/
+       
     }
+    printf("\nBefore barrier...\n");
+    MPI_Barrier(MPI_COMM_WORLD);
+    printf("\n After barrier\n");
+    MPI_Bcast(&a[0][0], N*N, MPI_FLOAT, 0, MPI_COMM_WORLD);
+    MPI_Bcast(&B[0], N, MPI_FLOAT, 0, MPI_COMM_WORLD);
+    MPI_Barrier(MPI_COMM_WORLD);
+
     /* Gaussian elimination */
-    for (norm = 0; norm < N - 1; norm++) {
-        /* Broadcast A[norm] row and B[norm]*/
-        MPI_Bcast(&A[norm][0], N, MPI_FLOAT, 0, MPI_COMM_WORLD);
-        MPI_Bcast(&B[norm], 1, MPI_FLOAT, 0, MPI_COMM_WORLD);
-        /*Send data from process 0 to other processes*/
-        if (myid == 0) {
-            for (i = 1; i < procs; i++) {
-                /*Send data to corresponding process using static interleaved scheduling*/
-                for (row = norm + 1 + i; row < N; row += procs) {
-                    MPI_Isend(&A[row], N, MPI_FLOAT, i, 0, MPI_COMM_WORLD, &request);
-                    MPI_Wait(&request, &status);
-                    MPI_Isend(&B[row], 1, MPI_FLOAT, i, 0, MPI_COMM_WORLD, &request);
-                    MPI_Wait(&request, &status);
-                }
-            }
-            /*Gaussian elimination*/
-            for (row = norm + 1; row < N; row += procs) {
-                multiplier = A[row][norm] / A[norm][norm];
+    for (norm = 0; norm < N-1; norm++) {
+        /* Broadcast A[norm] row and B[norm] from corresponding processor, which is important in this iteration*/
+        bid = norm%procs;
+
+        MPI_Bcast(&a[norm][0], N, MPI_FLOAT, bid, MPI_COMM_WORLD);
+        MPI_Bcast(&B[norm], 1, MPI_FLOAT, bid, MPI_COMM_WORLD);
+
+        /*Gaussian elimination using static interleaved scheduling where each processor gets the same rows in each iteration*/
+        for (row = myid; row < N; row += procs) {
+            /*Only perform gaussian elimination on rows that haven't been done*/
+            if (row > norm) {
+                multiplier = a[row][norm] / a[norm][norm];
                 for (col = norm; col < N; col++) {
-                    A[row][col] -= A[norm][col] * multiplier;
+                    a[row][col] -= a[norm][col] * multiplier;
                 }
                 B[row] -= B[norm] * multiplier;
             }
-            /*Receive the updated data from other processes*/
-            for (i = 1; i < procs; i++) {
-                for (row = norm + 1 + i; row < N; row += procs) {
-                    MPI_Recv(&A[row], N, MPI_FLOAT, i, 1, MPI_COMM_WORLD, &status);
-                    MPI_Recv(&B[row], 1, MPI_FLOAT, i, 1, MPI_COMM_WORLD, &status);
-                }
-            }
-            if (norm == N - 2) {
-                endwtime = MPI_Wtime();
-                printf("elapsed time = %f\n", endwtime - startwtime);
-            }
         }
-        /*Receive data from process 0*/
-        else {
-            for (row = norm + 1 + myid; row < N; row += procs) {
-                MPI_Recv(&A[row], N, MPI_FLOAT, 0, 0, MPI_COMM_WORLD, &status);		
-                MPI_Recv(&B[row], 1, MPI_FLOAT, 0, 0, MPI_COMM_WORLD, &status);
-                /*Gaussian elimination*/
-                multiplier = A[row][norm] / A[norm][norm];
-                for (col = norm; col < N; col++) {
-                    A[row][col] -= A[norm][col] * multiplier;
-                }
-                B[row] -= B[norm] * multiplier;
-                /*Send back the results*/
-                MPI_Isend(&A[row], N, MPI_FLOAT, 0, 1, MPI_COMM_WORLD, &request);
-                MPI_Wait(&request, &status);		
-                MPI_Isend(&B[row], 1, MPI_FLOAT, 0, 1, MPI_COMM_WORLD, &request);
-                MPI_Wait(&request, &status);
-            }
-        }
-        /*Barrier syncs all processes*/
-        MPI_Barrier(MPI_COMM_WORLD);
+
     }
+    MPI_Bcast(&a[N-1][0], N, MPI_FLOAT, (N-1)%procs, MPI_COMM_WORLD);
+    MPI_Bcast(&B[N-1], 1, MPI_FLOAT, (N-1)%procs, MPI_COMM_WORLD);
+    
+    MPI_Barrier(MPI_COMM_WORLD);
+    // printf("\nProcess number %d", myid);
+    // print_inputs();
+    if (myid == 0) {
+        endwtime = MPI_Wtime();
+        printf("\nelapsed time = %f\n", endwtime - startwtime);
+        for(i = 0; i < N; i++) {
+            for(j = 0; j < N; j++) {
+                A[i][j] = a[i][j];
+            }
+        }
+    }
+
 }
 

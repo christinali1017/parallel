@@ -1,8 +1,8 @@
 /* Gaussian elimination without pivoting.
  */
 
-/* ****** ADD YOUR CODE AT THE END OF THIS FILE. ******
- * You need not submit the provided code.
+/*
+static interleaving, send and rcvd to exchange data, time is bad with large N
  */
 
 #include <stdio.h>
@@ -23,7 +23,6 @@ char *ID;
 
 /* Program Parameters */
 #define MAXN 10000  /* Max value of N */
-
 int N;  /* Matrix size */
 int procs;  /* Number of processors to use */
 int myid;
@@ -50,6 +49,7 @@ unsigned int time_seed() {
     return (unsigned int)(t.tv_usec);
 }
 
+/* Set the program parameters from the command-line arguments */
 void parameters(int argc, char **argv) {
     int submit = 0;  /* = 1 if submission parameters should be used */
     int seed = 0;  /* Random seed */
@@ -150,7 +150,6 @@ int main(int argc, char **argv) {
     printf("\nProcess number %d", myid);
     /* Process program parameters */
     parameters(argc, argv);
-
     
     /* Initialize A and B */
     if (myid == 0) {
@@ -189,15 +188,10 @@ void gauss() {
     MPI_Request request;
     int norm, row, col, i;  /* Normalization row, and zeroing element row and col */
     float multiplier;
-    float localA[N/procs+1][N];
-    float localB[N/procs+1];
-    int numsRows = 0;
-    int k;
     /*Time Variables*/
+
     double startwtime = 0.0, endwtime;
-
     MPI_Barrier(MPI_COMM_WORLD);
-
     if (myid == 0) {
         printf("\nComputing Parallely Using MPI.\n");
         startwtime = MPI_Wtime();
@@ -210,37 +204,14 @@ void gauss() {
         /*Send data from process 0 to other processes*/
         if (myid == 0) {
             for (i = 1; i < procs; i++) {
-                numsRows = 0;
                 /*Send data to corresponding process using static interleaved scheduling*/
                 for (row = norm + 1 + i; row < N; row += procs) {
-                    for(k = 0; k < N; k++){
-                      localA[numsRows][k] = A[row][k];
-                    }
-                    localB[numsRows] = B[row];
-                    numsRows++;
-                }
-                if (numsRows != 0) {
-                  MPI_Isend(&numsRows, 1, MPI_INT, i, 0, MPI_COMM_WORLD, &request);
-                  MPI_Isend(&localA[0], N*numsRows, MPI_FLOAT, i, 0, MPI_COMM_WORLD, &request);
-                  MPI_Isend(&localB[0], numsRows, MPI_FLOAT, i, 0, MPI_COMM_WORLD, &request);
+                    MPI_Isend(&A[row], N, MPI_FLOAT, i, 0, MPI_COMM_WORLD, &request);
+                    MPI_Wait(&request, &status);
+                    MPI_Isend(&B[row], 1, MPI_FLOAT, i, 0, MPI_COMM_WORLD, &request);
+                    MPI_Wait(&request, &status);
                 }
             }
-            // int j = norm + 1;
-            // while(j < N) {
-            //     for (i = 0; i < procs && j < N; i++) {
-            //         if (i == 0) {
-            //           j++;
-            //           continue;
-            //         }
-            //         MPI_Isend(&A[j], N, MPI_FLOAT, i, 0, MPI_COMM_WORLD, &request);
-            //         MPI_Wait(&request, &status);
-            //         MPI_Isend(&B[j], 1, MPI_FLOAT, i, 0, MPI_COMM_WORLD, &request);
-            //         MPI_Wait(&request, &status);
-            //         j++;
-            //     }
-            // }
-
-
             /*Gaussian elimination*/
             for (row = norm + 1; row < N; row += procs) {
                 multiplier = A[row][norm] / A[norm][norm];
@@ -250,88 +221,34 @@ void gauss() {
                 B[row] -= B[norm] * multiplier;
             }
             /*Receive the updated data from other processes*/
-
-
-            // for (i = 1; i < procs; i++) {
-            //     for (row = norm + 1 + i; row < N; row += procs) {
-            //         MPI_Recv(&A[row], N, MPI_FLOAT, i, 1, MPI_COMM_WORLD, &status);
-            //         MPI_Recv(&B[row], 1, MPI_FLOAT, i, 1, MPI_COMM_WORLD, &status);
-            //     }
-            // }
-
             for (i = 1; i < procs; i++) {
-                MPI_Recv(&numsRows, 1, MPI_INT, i, 1, MPI_COMM_WORLD, &status);  
-                MPI_Recv(&localA[0], N*numsRows, MPI_FLOAT, i, 1, MPI_COMM_WORLD, &status);
-                MPI_Recv(&localB[0], numsRows, MPI_FLOAT, i, 1, MPI_COMM_WORLD, &status);
-                int count = 0;
-               for (row = norm + 1 + i; row < N; row += procs) {
-                  for(k = 0; k < N; k++) {
-                    A[row][k] = localA[count][k];
-                  }
-                  B[row] = localB[count];
-                  count++;
-               }
+                for (row = norm + 1 + i; row < N; row += procs) {
+                    MPI_Recv(&A[row], N, MPI_FLOAT, i, 1, MPI_COMM_WORLD, &status);
+                    MPI_Recv(&B[row], 1, MPI_FLOAT, i, 1, MPI_COMM_WORLD, &status);
+                }
             }
-
-
-            // j = norm + 1;
-            // while(j < N) {
-            //     for (i = 0; i < procs && j < N; i++) {
-            //         if (i == 0) {
-            //           j++;
-            //           continue;
-            //         }
-            //         MPI_Recv(&A[j], N, MPI_FLOAT, i, 1, MPI_COMM_WORLD, &status);
-            //         MPI_Recv(&B[j], 1, MPI_FLOAT, i, 1, MPI_COMM_WORLD, &status);
-            //         j++;
-            //     }
-            // }
-
-
             if (norm == N - 2) {
                 endwtime = MPI_Wtime();
                 printf("elapsed time = %f\n", endwtime - startwtime);
             }
         }
-      
         /*Receive data from process 0*/
         else {
-                MPI_Recv(&numsRows, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);   
-                MPI_Recv(&localA[0], N * numsRows, MPI_FLOAT, 0, 0, MPI_COMM_WORLD, &status);   
-                MPI_Recv(&localB[0], numsRows, MPI_FLOAT, 0, 0, MPI_COMM_WORLD, &status);
+            for (row = norm + 1 + myid; row < N; row += procs) {
+                MPI_Recv(&A[row], N, MPI_FLOAT, 0, 0, MPI_COMM_WORLD, &status);		
+                MPI_Recv(&B[row], 1, MPI_FLOAT, 0, 0, MPI_COMM_WORLD, &status);
                 /*Gaussian elimination*/
-                for(k = 0; k < numsRows; k++) {
-                    multiplier = localA[k][norm] / A[norm][norm];
-
-                    for (col = norm; col < N; col++) {
-                        localA[k][col] -= A[norm][col] * multiplier;
-                    }
-                    localB[k] -= B[norm] * multiplier;
+                multiplier = A[row][norm] / A[norm][norm];
+                for (col = norm; col < N; col++) {
+                    A[row][col] -= A[norm][col] * multiplier;
                 }
-
+                B[row] -= B[norm] * multiplier;
                 /*Send back the results*/
-                MPI_Isend(&numsRows, 1, MPI_INT, 0, 1, MPI_COMM_WORLD, &request);
-                MPI_Isend(&localA[0], N*numsRows, MPI_FLOAT, 0, 1, MPI_COMM_WORLD, &request); 
-                // MPI_Wait(&request, &status);  
-                MPI_Isend(&localB[0], numsRows, MPI_FLOAT, 0, 1, MPI_COMM_WORLD, &request);
-                // MPI_Wait(&request, &status);
-            
-
-            // for (row = norm + 1 + myid; row < N; row += procs) {
-            //     MPI_Recv(&A[row], N, MPI_FLOAT, 0, 0, MPI_COMM_WORLD, &status);   
-            //     MPI_Recv(&B[row], 1, MPI_FLOAT, 0, 0, MPI_COMM_WORLD, &status);
-            //     /*Gaussian elimination*/
-            //     multiplier = A[row][norm] / A[norm][norm];
-            //     for (col = norm; col < N; col++) {
-            //         A[row][col] -= A[norm][col] * multiplier;
-            //     }
-            //     B[row] -= B[norm] * multiplier;
-            //     /*Send back the results*/
-            //     MPI_Isend(&A[row], N, MPI_FLOAT, 0, 1, MPI_COMM_WORLD, &request); 
-            //     MPI_Wait(&request, &status);  
-            //     MPI_Isend(&B[row], 1, MPI_FLOAT, 0, 1, MPI_COMM_WORLD, &request);
-            //     MPI_Wait(&request, &status);
-            // }
+                MPI_Isend(&A[row], N, MPI_FLOAT, 0, 1, MPI_COMM_WORLD, &request);
+                MPI_Wait(&request, &status);		
+                MPI_Isend(&B[row], 1, MPI_FLOAT, 0, 1, MPI_COMM_WORLD, &request);
+                MPI_Wait(&request, &status);
+            }
         }
         /*Barrier syncs all processes*/
         MPI_Barrier(MPI_COMM_WORLD);
