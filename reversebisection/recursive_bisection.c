@@ -3,152 +3,338 @@
 #include <math.h>
 #include <stdlib.h>
 
-#define NUM_POINTS 524288
+#define NUM_POINTS 8
 
 unsigned int X_axis[NUM_POINTS];
 unsigned int Y_axis[NUM_POINTS];
 
-// void find_quadrants_helper (num_quadrants, points);
-void  quicksort(int[] array, int size, int[] array1);
-void quicksort(int[] array, int start, int end, int[] array1);
-int partition(int[] array, int start, int end, int[] array1);
-void swap(int[] array, int i, int j);
+void swap(int array[], int i, int j);
+int find_kth(int *v, int n, int k, int *y);
 
-
-int top[num_quadrants];
-int left[num_quadrants];
-int right[num_quadrants];
-int bottom[num_quadrants];
-
-unsigned int sorted_x_axis[NUM_POINTS]
-unsigned int sorted_y_axis[NUM_POINTS]
-unsigned int sorted_x_yaxis[NUM_POINTS]
-unsigned int sorted_y_xaxis[NUM_POINTS]
 int i = 0;
 int j = 0;
 int k = 0;
-int global_cost = 0;
+int z = 0;
+double global_cost = 0;
 
-void find_quadrants (num_quadrants)
+int numprocs;  /* Number of processors to use */
+int myid;
+
 int num_quadrants;
+void find_quadrants (num_quadrants)
 {
     /* YOU NEED TO FILL IN HERE */
-    //sort X_axis and Y_axis
-    for (i = 0; i < NUM_POINTS; i++) {
-        sorted_x_axis[i] = X_axis[i];
-        sorted_y_axis[i] = Y_axis[i];
-    }
-    quicksort(sorted_x_axis, NUM_POINTS, sorted_x_yaxis);
-    quicksort(sorted_y_axis, NUM_POINTS, sorted_y_xaxis);
-
-    //
+    int x_cut = 0;
     int quadrants = 1;
-    top[0] = 0;
-    left[0] = 0;
-    right[0] = NUM_POINTS-1;
-    bottom[0] = NUM_POINTS-1;
-    bool x_cut = false;
-    while (num_quadrants > quadrants) {
-        if (x_cut == false) {
-            //cut in x direction
-            int current_quadrants = quadrants;
-            for (i = 0; i < current_quadrants; i++) {
-                int current_top = top[i];
-                int current_left = left[i];
-                int current_right = right[i];
-                int current_bottom = bottom[i];
-                j = current_left;
-                int points = NUM_POINTS / current_quadrants;
-                int count = 0;
-                while (sorted_x_axis[j] < sorted_x_axis[current_right] && count < points/2) {
-                    j++;
-                    count++;
+
+    //coordinates of the quadrants
+   
+    int top[num_quadrants];
+    int left[num_quadrants];
+    int right[num_quadrants];
+    int bottom[num_quadrants];
+    int pivot_arr[num_quadrants];
+
+    while (num_quadrants > quadrants) { 
+         int points = NUM_POINTS / quadrants;
+        if (!x_cut) {
+            for (i = 0; i < quadrants; i++) {
+                int x_pivot = find_kth(X_axis + i * points, points, points/2 - 1, Y_axis + i * points);
+                // printf("\n xcut %d \n", x_pivot);
+                //  for (z = 0; z < NUM_POINTS; z++) {
+                //  printf(" %d ", X_axis[z]);
+
+                // }
+                // printf("\n");
+
+                // for (z = 0; z < NUM_POINTS; z++) {
+                //     printf(" %d ", Y_axis[z]);
+
+                // }
+                // printf("\n");
+                k = i * points;
+                j = i * points + points -1;
+                while (k < j && k < k + points/2) {
+                    if (X_axis[k] > x_pivot) {
+                        while (X_axis[j] > x_pivot) {
+                            j--;
+                        }
+                        if (k < j) {
+                            swap(X_axis, k, j);
+                            swap(Y_axis, k, j);
+                        } 
+                    }
+                    k++;
                 }
-                right[i] = j;
-                top[i+quadrants] = top[i];
-                bottom[i+quadrants] = bottom[i];
-                left[i+quadrants] = j+1;
-                right[i+quadrants] = current_right;
+                // for (z = 0; z < NUM_POINTS; z++) {
+                //  printf(" %d ", X_axis[z]);
+
+                // }
+                // printf("\n");
+
+                // for (z = 0; z < NUM_POINTS; z++) {
+                //     printf(" %d ", Y_axis[z]);
+
+                // }
+                // printf("\n");
+                pivot_arr[i+quadrants-1] = x_pivot;
             }
-         
+            x_cut = 1;  
         } else {
-            //cut in y direction
-            int current_quadrants = quadrants;
-            for (i = 0; i < current_quadrants; i++) {
-                int current_top = top[i];
-                int current_left = left[i];
-                int current_right = right[i];
-                int current_bottom = bottom[i];
-                j = current_left;
-                int points = NUM_POINTS / current_quadrants;
-                int count = 0;
-                while (sorted_y_axis[j] < sorted_y_axis[current_right] && count < points/2) {
-                    j++;
-                    count++;
+            // printf("\n num qua  %d", quadrants);
+            for (i = 0; i < quadrants; i++) {
+                // for (z = 0; z < NUM_POINTS; z++) {
+                //     printf(" %d ", Y_axis[z]);
+
+                // }
+                // for (z = 0; z < points; z++) {
+                //     printf(" index %d, %d ", z+ i* points, Y_axis[z+i * points]);
+                // }
+                int y_pivot = find_kth(Y_axis + i * points, points, points/2 - 1, X_axis + i * points);
+                // printf("\n ycut %d \n", y_pivot);
+
+                // for (z = 0; z < NUM_POINTS; z++) {
+                //  printf(" %d ", X_axis[z]);
+
+                // }
+                // printf("\n");
+
+                // for (z = 0; z < NUM_POINTS; z++) {
+                //     printf(" %d ", Y_axis[z]);
+
+                // }
+                // printf("\n");
+
+                k = i * points;
+                j = i * points + points - 1;
+                while (k < j && k < k + points/2) {
+                    if (Y_axis[k] > y_pivot) {
+                        while (Y_axis[j] > y_pivot) {
+                            j--;
+                        }
+                        if (k < j) {
+                            swap(X_axis, k, j);
+                            swap(Y_axis, k, j);
+                        } 
+                    }
+                    k++;
                 }
-                bottom[i] = j;
-                top[i+quadrants] = top[i];
-                bottom[i+quadrants] = current_bottom;
-                left[i+quadrants] = left[i];
-                right[i+quadrants] = right[i];
-            }
+                // for (z = 0; z < NUM_POINTS; z++) {
+                //  printf(" %d ", X_axis[z]);
+
+                // }
+                // printf("\n");
+
+                // for (z = 0; z < NUM_POINTS; z++) {
+                //     printf(" %d ", Y_axis[z]);
+
+                // }
+                // printf("\n");
+                // printf("\n index i %d", i);
+                // printf("\n index  %d", quadrants + i -1);
+                pivot_arr[i+quadrants-1] = y_pivot;
+            }  
+            x_cut = 0;
         }
-        quadrants = quadrants * 2;
+        quadrants *= 2;
+
     }
 
-    MPI_Barrier(MPI_COMM_WORLD);
+    //find border of initial quadrant
+    int min_x = X_axis[0];
+    int max_x = X_axis[0];
+    int min_y = Y_axis[0];
+    int max_y = Y_axis[0];
+    for (i = 1; i < NUM_POINTS; i++) {
+        if (X_axis[i] < min_x) {
+            min_x = X_axis[i];
+        }
+        if (X_axis[i] > max_x) {
+            max_x = X_axis[i];
+        }
+        if (Y_axis[i] < min_y) {
+            min_y = Y_axis[i];
+        }
+        if (Y_axis[i] > max_y) {
+            max_y = Y_axis[i];
+        }
+    }
+
+    // for (i = 0; i < num_quadrants-1; i++) {
+    //     printf(" %d ", pivot_arr[i]);
+
+    // }
+
+    // printf("\nminx maxx %d, %d", min_x, max_x);
+    // printf("\nminy maxy %d, %d", min_y, max_y);
+
+    //find coordinates of quadrants
+    top[0] = min_y;
+    bottom[0] = max_y;
+    left[0] = min_x;
+    right[0] = max_x;
+    i = 0;
+    x_cut = 0;
+    quadrants = 1;
+    while (i < num_quadrants-1) {
+        int temp = i;
+        for (j = 0; j < quadrants; j++) {
+            top[j+quadrants] = top[j];
+            bottom[j+quadrants] = bottom[j];
+            left[j+quadrants] = left[j];
+            right[j+quadrants] = right[j];
+        }
+        if (!x_cut) {
+
+            for (j = 0; j < quadrants * 2; j+=2) {
+                top[j] = top[quadrants + j/2];
+                bottom[j] = bottom[quadrants + j/2];
+                left[j] = left[quadrants + j/2];
+                right[j] = pivot_arr[temp];
+
+                top[j+1] = top[quadrants + j/2];
+                bottom[j+1] = bottom[quadrants + j/2];
+                left[j+1] = pivot_arr[temp];
+                right[j+1] = right[quadrants + j/2];
+                temp++;
+            }
+            x_cut = 1;
+        } else{
+            for (j = 0; j < quadrants * 2; j+=2) {
+                top[j] = top[quadrants + j/2];
+                bottom[j] = pivot_arr[temp];
+                left[j] = left[quadrants + j/2];
+                right[j] = right[quadrants + j/2];
+                
+                top[j+1] = pivot_arr[temp];
+                bottom[j+1] = bottom[quadrants + j/2];
+                left[j+1] = left[quadrants + j/2];
+                right[j+1] = right[quadrants + j/2];
+                temp++;
+            }
+            x_cut = 0;
+        }
+        i += quadrants;
+        quadrants *= 2;
+    }
+
+    //print coordinates of quadrants
+    if (myid == 0) {
+         printf("\nPrint quadrants coordinates...... format: quarant number: top-left, top-right, bottom-left, bottom-right\n");
+        for (i = 0; i < num_quadrants; i++) {
+            printf("\nNumber %d : " + i);
+            printf(" (%d,%d) ", left[i], top[i]);
+            printf(" (%d,%d) ", right[i], top[i]);
+            printf(" (%d,%d) ", left[i], bottom[i]);
+            printf(" (%d,%d) \n", right[i], bottom[i]);
+        }
+    }
+   
+  
+
+    // MPI_Barrier(MPI_COMM_WORLD);
 
     //calculate cost
-    int local_cost = 0;
-    for (i = myid; i <= num_quadrants; i += numprocs)
+
+    //     for (z = 0; z < NUM_POINTS; z++) {
+    //  printf(" %d ", X_axis[z]);
+
+    // }
+    // printf("\n");
+
+    // for (z = 0; z < NUM_POINTS; z++) {
+    //     printf(" %d ", Y_axis[z]);
+
+    // }
+    // printf("\n");
+
+    double local_cost = 0;
+    for (i = myid; i <= num_quadrants-1; i += numprocs)
     {
        int points = NUM_POINTS / num_quadrants;
-       for (j = 0; j < points; j++) {
-            for (k = j; k < points; k++) {
-                int diff_x = sorted_x_axis[left[i]+j] - sorted_x_axis[left[i]+k];
-                int diff_y = sorted_x_yaxis[left[i]+j] - sorted_x_yaxis[left[i]+k]; 
-                local_cost += sqrt(diff_x * diff_x + diff_y * diff_y);
+       for (j = 0; j < points - 1; j++) {
+            for (k = j+1; k < points; k++) {
+                int x1 = points * i + j;
+                int x2 = points * i + k;
+                int y1 = points * i + j;
+                int y2 = points * i + k;
+
+                double diff_x = abs(X_axis[x1] - X_axis[x2]);
+                double diff_y = abs(Y_axis[y1] - Y_axis[y2]);
+                // printf("\n x f: %d %d %d %d %d %d %d %d %f %f", x1, x2, y1, y2, X_axis[x1], X_axis[x2], Y_axis[y1], Y_axis[y2], diff_x, diff_y);
+                // double distance = diff_x * diff_x + diff_y * diff_y; 
+                // printf("\ndistance: %f", distance);
+                local_cost += sqrt((double)diff_x * diff_x + diff_y * diff_y);
+                // printf("\nlocal_cost: %f", local_cost);
             }
        }     
-
     }
+    // printf("\nlocal_cost: %lf", local_cost);
 
      MPI_Reduce(&local_cost, &global_cost, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
 }
 
 
-
-void quicksort(int[] array, int size, int[] array1) {
-    if (size == 0) {
-        return;
-    }
-    quicksort(array, 0, size-1, array1);
-}
-
-void quicksort(int[] array, int start, int end, int[] array1) {
-    if (start >= end) {
-        return;
-    }
-    int index = partition (array, start, end, array1);
-    quicksort(array, start, index-1, array1);
-    quicksort(array, index+1, end, array1);
-}
-
-int partition(int[] array, int start, int end, int[] array1) {
-    int i = start;
-    while (i < end) {
-        if (array[i] <= array[end]) {
-            swap(array, i, start++);
-            swap(array1, i, start++);
+int find_kth(int *v, int n, int k, int *y) {
+    int j0 = 0;
+    int i1 = 0;
+    int j1 = 0;
+    if (n == 1 && k == 0) return v[0];
+ 
+    int m = (n + 4)/5;
+    int *medians =  (int *)malloc(m * sizeof(int));
+    for (i1=0; i1<m; i1++) {
+        if (5*i1 + 4 < n) {
+            int *w = v + 5*i1;
+            int *w1 = y + 5*i1;
+            for (j0=0; j0<3; j0++) {
+                int jmin = j0;
+                for (j1=j0+1; j1<5; j1++) {
+                    if (w[j1] < w[jmin]) jmin = j1;
+                }
+                swap(w, j0, jmin);
+                swap(w1, j0, jmin);
+            }
+            medians[i1] = w[2];
+        } else {
+            medians[i1] = v[5*i1];
         }
-        i++;
     }
-    swap(array, start, end);
-    swap(array1, start, end);
-    return start;
+ 
+    int pivot = find_kth(medians, m, m/2, medians);
+    // delete [] medians;
+    free(medians);
+ 
+    for (i1=0; i1<n; i1++) {
+        if (v[i1] == pivot) {
+            swap(v, i1, n-1);
+            swap(y, i1, n-1);
+            break;
+        }
+    }
+ 
+    int store = 0;
+    for (i1=0; i1<n-1; i1++) {
+        if (v[i1] < pivot) {
+            swap(v, i1, store);
+            swap(y, i1, store);
+            store++;
+        }
+    }
+    swap(v, store, n-1);
+    swap(y, store, n-1);
+ 
+    if (store == k) {
+        return pivot;
+    } else if (store > k) {
+        return find_kth(v, store, k, y);
+    } else {
+        return find_kth(v+store+1, n-store-1, k-store-1, y+store+1);
+    }
 }
 
-void swap(int[] array, int i, int j) {
+
+void swap(int array[], int i, int j) {
     int temp = array[i];
     array[i] = array[j];
     array[j] = temp;
@@ -159,9 +345,12 @@ int argc;
 char *argv[];
 {
     int num_quadrants;
-    int myid, numprocs;
+    // int myid, numprocs;
     int  namelen;
     char processor_name[MPI_MAX_PROCESSOR_NAME];
+
+    /*Time Variables*/
+    double startwtime = 0.0, endwtime;
     
     MPI_Init(&argc,&argv);
     MPI_Comm_size(MPI_COMM_WORLD,&numprocs);
@@ -190,17 +379,55 @@ char *argv[];
             
             for (i = 0; i < NUM_POINTS; i++)
                 X_axis[i] = (unsigned int)rand();
+
             
             for (i = 0; i < NUM_POINTS; i++)
                 Y_axis[i] = (unsigned int)rand();
+
+            
+            printf("\nComputing Parallely Using MPI.\n");
+            startwtime = MPI_Wtime();
+            // for (i = 0; i < NUM_POINTS; i++) {
+            //      printf(" %d ", X_axis[i]);
+
+            // }
+            // printf("\n");
+
+            // for (i = 0; i < NUM_POINTS; i++) {
+            //     printf(" %d ", Y_axis[i]);
+
+            // }
+               
+               
         }
     
     MPI_Bcast(&X_axis, NUM_POINTS, MPI_INT, 0, MPI_COMM_WORLD);
     MPI_Bcast(&Y_axis, NUM_POINTS, MPI_INT, 0, MPI_COMM_WORLD);  
     
     find_quadrants (num_quadrants);
+
+    // MPI_Barrier(MPI_COMM_WORLD);
+
+    if (myid == 0) {
+        endwtime = MPI_Wtime();
+        printf("\nelapsed time = %f\n", endwtime - startwtime);
+        // for (i = 0; i < NUM_POINTS; i++) {
+        //      printf(" %d ", X_axis[i]);
+
+        // }
+        // printf("\n");
+
+        // for (i = 0; i < NUM_POINTS; i++) {
+        //     printf(" %d ", Y_axis[i]);
+
+        // }
+        printf("\nTotal cost:  %lf \n", global_cost);
+
+    }
     
     MPI_Finalize();
+
+
     return 0;
 }
 
